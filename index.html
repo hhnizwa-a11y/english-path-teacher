@@ -6475,6 +6475,7 @@ html.epa-locked #epaGate{display:block;visibility:visible}
       <button class="btn go" id="epaGo" type="button">تفعيل</button>
     </div>
     <div class="msg" id="epaMsg" role="status" aria-live="polite"></div>
+    <p class="small" style="text-align:right;margin:8px 0 0">عند فتح التطبيق أوّل مرّة على الجهاز يصل إلى المطوّر رقم الرمز ونوع الجهاز وبلده (من المنطقة الزمنية) فقط، ليعرف أنّ الرمز فُعِّل. لا يُرسَل اسم ولا رقم هاتف ولا موقع دقيق.</p>
   </div>
   <div class="card">
     <h2>للشراء أو الاستفسار</h2>
@@ -6484,6 +6485,7 @@ html.epa-locked #epaGate{display:block;visibility:visible}
       <a class="btn" id="epaCall">📞 <span class="en">97247727</span></a>
       <a class="btn" id="epaIg" target="_blank" rel="noopener">📷 <span class="en">@nizwadeveloper</span></a>
     </div>
+    <p style="margin:12px 0 0">💳 التحويل: <b class="en">95153392</b> <button class="btn" id="epaXfer" type="button" style="min-height:40px;padding:6px 14px;font-size:15px">📋 نسخ الرقم</button></p>
   </div>
   <div class="card" id="epaInstCard" hidden>
     <h2>ثبّتوا التطبيق</h2>
@@ -6596,6 +6598,33 @@ const RL=(()=>{
     var ct=EPRL.unb64($('epaData').textContent.replace(/\s+/g,''));
     var p=EPRL.open(master,EPRL.unb64(V.data.n),ct,EPRL.unb64(V.data.t));
     return p?EPRL.text(p):null}
+  /* activation notice: once per device, the developer's sheet gets the code's serial and licence number, a random number
+     for this device, and what kind of device it is (phone/tablet/computer, system, model when the browser gives it,
+     browser). No name, no phone number. It waits a few seconds after the start, and a failure never touches the app:
+     it is tried again on the next start. */
+  var ACT='https://script.google.com/macros/s/AKfycbyYBV4msuNI0hiGUAUO5WgvkpbbpZBSAlRyPfcCrZfbMjEomJ6UuoQ_zoWMvI5Azr9Rog/exec',PROD='ep-teacher';
+  function device(cb){
+    var ua=navigator.userAgent||'',ipad=/iPad/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1);
+    var r={k:ipad||(/Android/.test(ua)&&!/Mobile/.test(ua))?'tablet':/iPhone|iPod|Android|Mobi/.test(ua)?'phone':'computer',
+      o:/Windows/.test(ua)?'Windows':ipad?'iPadOS':/iPhone|iPod/.test(ua)?'iOS':/Android/.test(ua)?'Android':/CrOS/.test(ua)?'ChromeOS':/Mac OS X|Macintosh/.test(ua)?'macOS':/Linux/.test(ua)?'Linux':'',
+      b:/Edg[A-Z]?\//.test(ua)?'Edge':/SamsungBrowser/.test(ua)?'Samsung Internet':/OPR\//.test(ua)?'Opera':/CriOS|Chrome\//.test(ua)?'Chrome':/FxiOS|Firefox\//.test(ua)?'Firefox':/Safari\//.test(ua)?'Safari':'',m:''};
+    var mm=/Android[^;)]*;\s*([^;)]+?)(?:\s+Build\/[^;)]*)?\)/.exec(ua);if(mm&&mm[1]!=='K')r.m=mm[1];
+    try{var h=navigator.userAgentData;if(h&&h.getHighEntropyValues)
+      return h.getHighEntropyValues(['model']).then(function(v){if(v&&v.model)r.m=v.model;cb(r)},function(){cb(r)})}catch(e){}
+    cb(r)}
+  /* the device's time zone (e.g. Asia/Muscat): tells the country, never the exact place; no permission, no other site */
+  function tz(){try{return String(Intl.DateTimeFormat().resolvedOptions().timeZone||'').slice(0,40)}catch(e){return ''}}
+  function report(L){
+    if(!/^https?:\/\//.test(ACT)||!L||!L.sn||!L.id||!window.fetch)return;
+    setTimeout(function(){try{
+      var fk=KEY+'-act';if(localStorage.getItem(fk)===L.id)return;
+      var dev=localStorage.getItem('epa-device');
+      if(!/^[0-9a-f]{16}$/.test(dev||'')){dev=hex(crypto.getRandomValues(new Uint8Array(8)));localStorage.setItem('epa-device',dev)}
+      device(function(r){
+        fetch(ACT,{method:'POST',mode:'no-cors',cache:'no-store',credentials:'omit',
+          body:JSON.stringify({p:PROD,s:L.sn,i:L.id,d:dev,k:r.k,o:r.o,m:String(r.m).slice(0,40),b:r.b,z:tz(),f:location.protocol==='file:'?1:0})})
+        .then(function(){try{localStorage.setItem(fk,L.id)}catch(e){}},function(){})})
+    }catch(e){}},4000)}
   var code=null;
   if(st&&st.id&&st.m){
     if(V.lic[st.id]){try{code=openApp(EPRL.unb64(st.m))}catch(e){code=null}}
@@ -6604,7 +6633,7 @@ const RL=(()=>{
     /* run it right here, while the page is still loading: an inline script added now runs at once, as a classic script,
        before DOMContentLoaded — the same moment the original single-file app ran it */
     $('epaData').textContent='';html.classList.remove('epa-boot');
-    var s=document.createElement('script');s.textContent=code;code=null;document.body.appendChild(s);return}
+    var s=document.createElement('script');s.textContent=code;code=null;document.body.appendChild(s);report(st);return}
 
   /* ------------------------------------------------ locked: the activation screen */
   html.classList.remove('epa-boot');html.classList.add('epa-locked');
@@ -6616,6 +6645,9 @@ const RL=(()=>{
   $('epaWa').href='https://wa.me/96897247727?text='+encodeURIComponent(waText);
   $('epaCall').href='tel:+96897247727';
   $('epaIg').href='https://www.instagram.com/nizwadeveloper/';
+  /* the number for paying by transfer (not the one to call): copied */
+  $('epaXfer').onclick=function(){var b=this,t=b.textContent;function done(ok){b.textContent=ok?'✅ نُسخ':'95153392';setTimeout(function(){b.textContent=t},2000)}
+    try{navigator.clipboard.writeText('95153392').then(function(){done(true)},function(){done(false)})}catch(e){done(false)}};
   var canStore=true;try{localStorage.setItem('epa-probe','1');localStorage.removeItem('epa-probe')}catch(e){canStore=false}
   if(!canStore)say('هذه الصفحة مفتوحة في عارض لا يحفظ البيانات (مثل عارض واتساب). افتحوها في المتصفّح ثم فعّلوا.','bad');
   function activate(){

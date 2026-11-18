@@ -5091,7 +5091,11 @@ html.epa-locked body>*:not(#epaGate){display:none!important}
 #epaGate{display:none}
 /* transfer number inside the app (footer, «تطبيقات البرنامج», «التواصل مع المطوّر») — added by tools/app.mjs */
 .epa-xfer{margin:10px auto 0;text-align:center;font-weight:700;font-size:15px;line-height:1.8}
-.epa-xfer b{direction:ltr;unicode-bidi:isolate;letter-spacing:.03em}
+.epa-xfer b{display:block;direction:ltr;unicode-bidi:isolate;letter-spacing:.03em;font-weight:800;line-height:1.25;margin:2px 0 8px;font-size:clamp(24px,5.5vw,28px)}
+/* never smaller than the contact number beside it: «التواصل مع المطوّر» 24.3px, «تطبيقات البرنامج» 28–37px */
+#gpDevContactDlg .epa-xfer b{font-size:25px}
+#gpAppsDlg .epa-xfer b{font-size:clamp(28px,6.8vw,37px)}
+#epaGate .xfer b{font-size:20px;direction:ltr;unicode-bidi:isolate}
 .epa-xfer button{margin-inline-start:8px;font:inherit;font-size:13.5px;font-weight:700;padding:3px 12px;border-radius:999px;border:1.5px solid currentColor;background:transparent;color:inherit;cursor:pointer;white-space:nowrap}
 .epa-xfer button:focus-visible{outline:3px solid #0e6b8c;outline-offset:2px}
 html.epa-locked #epaGate{display:block;visibility:visible}
@@ -6491,7 +6495,7 @@ html.epa-locked #epaGate{display:block;visibility:visible}
       <a class="btn" id="epaCall">📞 <span class="en">97247727</span></a>
       <a class="btn" id="epaIg" target="_blank" rel="noopener">📷 <span class="en">@nizwadeveloper</span></a>
     </div>
-    <p style="margin:12px 0 0">💳 التحويل: <b class="en">95153392</b> <button class="btn" id="epaXfer" type="button" style="min-height:40px;padding:6px 14px;font-size:15px">📋 نسخ الرقم</button></p>
+    <p class="xfer" style="margin:12px 0 0">💳 التحويل: <b class="en">95153392</b> <button class="btn" id="epaXfer" type="button" style="min-height:40px;padding:6px 14px;font-size:15px">📋 نسخ الرقم</button></p>
   </div>
   <div class="card" id="epaInstCard" hidden>
     <h2>ثبّتوا التطبيق</h2>

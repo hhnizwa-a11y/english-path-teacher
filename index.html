@@ -6733,7 +6733,7 @@ const FSL=cfg=>{
         nb:n(Object.keys(rev.items||{}).length,99999),nbm:n(rev.mastered,99999),qn:n(qn,9999999),qc:n(qc,9999999),
         rd:{n:n(rk.length,9999),avg:n(rk.length?avg/rk.length:0,100),secs:n(rd.secs,99999999),words:n(rd.words,99999999)},rsk:rsk,
         ms:n(Object.keys(ms.m||{}).length,9999),dc:n((stu.dict||{}).done,99999),md:n(md,9999),wr:n((wr.items||[]).length,9999),prod:n(Object.keys(prod.solved||{}).length,99999),
-        badges:n((pr.badges||[]).length,999),pos:{l:label.slice(0,40),at:Date.now()}}}
+        badges:n((pr.badges||[]).length,999),pos:{l:label.slice(0,40),at:Date.now()},av:typeof EPAV==='object'&&EPAV.ok(F.av)?F.av:''}}
     function lessons(s){var t=0,k;for(k in s.mods)t+=s.mods[k].d;return t}
     function tries(s){var t=0,k;for(k in s.mods)t+=s.mods[k].a;return t}
     /* today's row of the activity log: minutes, new lessons, quizzes taken */
@@ -6781,6 +6781,15 @@ const FSL=cfg=>{
       +'#epaMedBox .mh b{flex:1;font-size:21px;font-weight:800;line-height:1.7}'
       +'#epaMedBox .mh span{padding:2px 12px;border-radius:99px;background:#f6d98f;color:#071d49;font-weight:800;line-height:1.8}'
       +'#epaMedBox .mx{min-width:46px;min-height:46px;border-radius:14px;border:2px solid rgba(255,255,255,.55);background:transparent;font-size:20px}'
+      +'#epaMedBox .mp{display:flex;align-items:center;gap:12px;flex-wrap:wrap;max-width:980px;margin:14px auto 0;padding:14px;border-radius:20px;border:2px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08);width:calc(100% - 28px)}'
+      +'#epaMedBox .ma{flex:none;display:grid;place-items:center;width:76px;height:76px;border-radius:50%;border:3px solid #f6d98f;background:#0b3f9c;font-size:34px;font-weight:800;overflow:hidden}'
+      +'#epaMedBox .ma img{width:100%;height:100%;object-fit:cover}'
+      +'#epaMedBox .mn{flex:1;min-width:150px}#epaMedBox .mn b{display:block;font-size:21px;font-weight:800;line-height:1.7;overflow-wrap:anywhere}'
+      +'#epaMedBox .mn small{display:block;font-size:13.5px;font-weight:600;line-height:1.8;opacity:.86}'
+      +'#epaMedBox .mr{display:flex;gap:8px;flex-wrap:wrap}'
+      +'#epaMedBox .mb{min-height:44px;padding:4px 14px;border-radius:12px;border:2px solid rgba(255,255,255,.55);background:transparent;font-weight:800;font-size:15px;line-height:1.7}'
+      +'#epaMedBox .mb.go{border-color:#f6d98f;background:#f6d98f;color:#071d49!important;margin-inline-start:8px}'
+      +'#epaMedBox .mi{min-height:46px;width:min(100%,220px);padding:4px 12px;border-radius:12px;border:2px solid #f6d98f;background:#fff;color:#071d49;font:800 18px/1.8 system-ui,sans-serif}'
       +'#epaMedBox .mg{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:16px 10px;max-width:980px;margin:0 auto;padding:14px 14px 48px}'
       +'#epaMedBox .mt{grid-column:1/-1;margin:8px 0 0;font-size:17px;font-weight:800;line-height:1.8;color:#f6d98f}'
       +'#epaMedBox .mm{display:flex;flex-direction:column;align-items:center;gap:5px;padding:6px 2px 8px;border:0;border-radius:16px;background:transparent;text-align:center}'
@@ -6812,10 +6821,22 @@ const FSL=cfg=>{
       o.type='button';o.onclick=function(){d.remove()};d.onclick=function(e){if(e.target===d)d.remove()};
       c.appendChild(o);d.appendChild(c);d.setAttribute('role','dialog');d.setAttribute('aria-label',m.ar);mbox.appendChild(d);o.focus()}
     function museum(s){mstyle();if(mbox)mbox.remove();var st=EPM.state(s),got=0;MED.forEach(function(m){if(st[m.id].ok)got++});
-      mbox=mel('div');mbox.id='epaMedBox';mbox.setAttribute('role','dialog');mbox.setAttribute('aria-label','ميدالياتي');
+      mbox=mel('div');mbox.id='epaMedBox';mbox.setAttribute('role','dialog');mbox.setAttribute('aria-label','ملفي وميدالياتي');
       var h=mel('div','mh'),x=mel('button','mx','✕'),g=mel('div','mg'),last='';
       x.type='button';x.setAttribute('aria-label','إغلاق');x.onclick=function(){mbox.remove();mbox=null};
-      h.appendChild(mel('b','','🏅 ميدالياتي'));h.appendChild(mel('span','',AR(got)+' / '+AR(MED.length)));h.appendChild(x);mbox.appendChild(h);
+      h.appendChild(mel('b','','👤 ملفي وميدالياتي'));h.appendChild(mel('span','',AR(got)+' / '+AR(MED.length)));h.appendChild(x);mbox.appendChild(h);
+      /* the pupil's profile above the medals: the name the app knows, and a picture of the pupil's choosing. Both are
+         seen by the parent only (the picture goes as a small square in the same summary). */
+      var pf=mel('div','mp'),pa=mel('span','ma'),pn=mel('div','mn'),pb=mel('div','mr'),nm=String(J('egm-student-v1').name||'');
+      function paint(){pa.textContent='';if(EPAV.ok(F.av)){var i=mel('img');i.src=F.av;i.alt='';pa.appendChild(i)}else pa.textContent=nm?nm.charAt(0):'👤'}
+      function names(){pn.textContent='';pn.appendChild(mel('b','',nm||'لم تكتب اسمك بعد'));pn.appendChild(mel('small','','اسمك وصورتك يراهما وليّ أمرك فقط.'))}
+      var b1=mel('button','mb','📷 صورتي'),b2=mel('button','mb','✏️ اسمي'),b3=mel('button','mb','إزالة الصورة');
+      b1.type=b2.type=b3.type='button';b1.id='epaAvPick';b3.id='epaAvDel';b2.id='epaNameEdit';b3.hidden=!EPAV.ok(F.av);
+      b1.onclick=function(){EPAV.pick(function(d){if(!d)return;F.av=d;keep();paint();b3.hidden=false;face();tick()})};
+      b3.onclick=function(){delete F.av;keep();paint();b3.hidden=true;face();tick()};
+      b2.onclick=function(){pn.textContent='';var inp=mel('input','mi'),sv=mel('button','mb go','حفظ');inp.maxLength=30;inp.value=nm;inp.id='epaNameIn';inp.setAttribute('aria-label','اسمي');sv.type='button';sv.id='epaNameSave';
+        sv.onclick=function(){nm=setName(inp.value);names();paint();tick()};pn.appendChild(inp);pn.appendChild(sv);inp.focus()};
+      paint();names();pb.appendChild(b1);pb.appendChild(b2);pb.appendChild(b3);pf.appendChild(pa);pf.appendChild(pn);pf.appendChild(pb);mbox.appendChild(pf);
       MED.forEach(function(m){
         if(m.kind!==last){last=m.kind;g.appendChild(mel('div','mt',m.kind==='g'?'📚 موضوعات القواعد':m.kind==='s'?'🎧 المهارات':'🏆 الميدالية الكبرى'))}
         var y=st[m.id],b=mel('button','mm'+(y.ok?'':' off')),im=mel('img');b.type='button';
@@ -6823,11 +6844,20 @@ const FSL=cfg=>{
         if(!y.ok){var bar=mel('i'),f=mel('u');f.style.width=Math.round(y.p*100)+'%';bar.appendChild(f);b.appendChild(bar)}
         b.appendChild(mel('small','',(y.ok?'✅ ':'')+m.ar));b.onclick=function(){detail(m,y,false)};g.appendChild(b)});
       mbox.appendChild(g);document.body.appendChild(mbox);x.focus()}
+    /* the name is the app's own (STU): set through its own functions when they are there, so its screens follow */
+    function setName(v){v=String(v||'').trim().slice(0,30);
+      try{if(typeof loadStudentData==='function'&&typeof saveStudentData==='function'){loadStudentData();STU.name=v;saveStudentData();if(typeof renderProfileBtn==='function')renderProfileBtn()}
+        else{var o=J('egm-student-v1');o.name=v;localStorage.setItem('egm-student-v1',JSON.stringify(o))}}catch(e){}
+      face();return v}
+    /* the app's own profile button shows the picture instead of the first letter */
+    function face(){var a=document.getElementById('profAv');if(!a)return;
+      if(EPAV.ok(F.av)){a.style.backgroundImage='url('+F.av+')';a.style.backgroundSize='cover';a.style.backgroundPosition='center';a.style.color='transparent'}
+      else{a.style.backgroundImage='';a.style.color=''}}
     function medals(s){if(!MED.length)return;var st=EPM.state(s),now=[];MED.forEach(function(m){if(st[m.id].ok)now.push(m.id)});
       if(!mchip){mchip=document.createElement('button');mchip.type='button';mchip.id='epaMed';
         mchip.style.cssText='position:fixed;z-index:2147483000;inset-inline-start:10px;bottom:128px;border:3px solid #071d49;border-radius:99px;background:#fff;color:#071d49;font:800 15px/1.6 system-ui,sans-serif;padding:4px 14px;box-shadow:0 4px 0 rgba(7,29,73,.25);direction:rtl;cursor:pointer';
         mchip.onclick=function(){museum(sum())};document.body.appendChild(mchip)}
-      mchip.textContent='🏅 ميدالياتي '+AR(now.length)+'/'+AR(MED.length);
+      mchip.textContent='👤 ملفي · 🏅 '+AR(now.length)+'/'+AR(MED.length);face();
       if(!Array.isArray(F.med)){F.med=now;keep();return}
       var fresh=now.filter(function(id){return F.med.indexOf(id)<0});
       if(fresh.length||now.length!==F.med.length){F.med=now;keep()}
@@ -6836,12 +6866,12 @@ const FSL=cfg=>{
     /* ---- send and read ---- */
     function tick(){if(busy||navigator.onLine===false)return;busy=true;
       var s=sum();note(s);keep();medals(s);
-      var sig=JSON.stringify([s.name,s.grade,s.mods,s.dn,s.exam,s.nb,s.nbm,s.rd.n,s.ms,s.dc,s.md,s.wr,s.prod,s.badges,Math.floor(row().t/60)]);
+      var sig=JSON.stringify([s.name,s.grade,s.mods,s.dn,s.exam,s.nb,s.nbm,s.rd.n,s.ms,s.dc,s.md,s.wr,s.prod,s.badges,Math.floor(row().t/60),s.av.length,s.av.slice(-24)]);if(!s.av)delete s.av;
       var p=root+'/kids/'+F.cid;
       (F.on?Promise.resolve(true):api.get(root).then(function(d){if(d){F.on=1;keep()}return !!d}))
       .then(function(on){if(!on)return null;
         var send=sig!==F.sig?api.set(p,Object.assign(s,{updated:Date.now(),log:F.log.slice(-30)}),
-          ['name','grade','days','dn','streak','best','mods','exam','cert','nb','nbm','qn','qc','rd','rsk','ms','dc','md','wr','prod','badges','pos','updated','log']).then(function(){F.sig=sig;keep()}):Promise.resolve();
+          ['name','grade','days','dn','streak','best','mods','exam','cert','nb','nbm','qn','qc','rd','rsk','ms','dc','md','wr','prod','badges','pos','updated','log','av']).then(function(){F.sig=sig;keep()}):Promise.resolve();
         return send.then(function(){return api.get(p)})})
       .then(function(d){if(d===null||d===undefined)return;var x=d.goal;
         var g=x&&typeof x.prize==='string'&&x.need>0?{prize:x.prize.slice(0,60),kind:UNIT[x.kind]?x.kind:'lessons',need:x.need|0,base:x.base|0,k:String(x.k||'').slice(0,8),set:+x.set||0}:null;

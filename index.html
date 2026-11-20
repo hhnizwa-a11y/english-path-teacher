@@ -5098,6 +5098,8 @@ html.epa-locked body>*:not(#epaGate){display:none!important}
 #epaGate .xfer b{font-size:20px;direction:ltr;unicode-bidi:isolate}
 .epa-xfer button{margin-inline-start:8px;font:inherit;font-size:13.5px;font-weight:700;padding:3px 12px;border-radius:999px;border:1.5px solid currentColor;background:transparent;color:inherit;cursor:pointer;white-space:nowrap}
 .epa-xfer button:focus-visible{outline:3px solid #0e6b8c;outline-offset:2px}
+/* the bottom bar's labels are one-line clips: room for the tails of Arabic letters (ع ق ي), taken back so nothing moves */
+.gp-tabbar button .nv-l{padding-block:.28em;margin-block:-.28em}
 html.epa-locked #epaGate{display:block;visibility:visible}
 #epaGate{min-height:100vh;padding:20px 16px 40px;background:#f4f1ea;color:#1c2140;font-family:Cairo,Tajawal,system-ui,sans-serif;direction:rtl;text-align:right}
 #epaGate .in{max-width:520px;margin:0 auto}
@@ -6596,6 +6598,36 @@ const RL=(()=>{
   const keysFor=(code,salt,iter)=>pbkdf2(utf8(norm(code)),salt,iter,2);
   return{sha256,hkey,hmac,pbkdf2,aesKey,aesBlock,stream,seal,open,utf8,text,b64,unb64,norm,keysFor,cat}})();
 ;return RL})();
+var EPFS=(function(){/* FSL — the few Firestore calls the parent link needs, over Firestore's plain web (REST) interface.
+   No Firebase library is loaded: the app stays small and keeps opening with no connection.
+   cfg = { p: project id, k: web API key }   (for the local emulator: { p, h: 'http://127.0.0.1:8085' })
+   Nobody signs in. What protects a family is its id: 128 bits derived from the activation code, which the
+   security rules (firebase/firestore.rules) never let anyone list. */
+const FSL=cfg=>{
+  const root=(cfg.h||'https://firestore.googleapis.com')+'/v1/projects/'+cfg.p+'/databases/(default)/documents/';
+  const fields=o=>{const f={};for(const k in o)if(o[k]!==undefined)f[k]=enc(o[k]);return f};
+  const enc=v=>v===null?{nullValue:null}:typeof v==='string'?{stringValue:v}:typeof v==='boolean'?{booleanValue:v}
+    :typeof v==='number'?(Number.isInteger(v)?{integerValue:String(v)}:{doubleValue:v})
+    :Array.isArray(v)?{arrayValue:{values:v.map(enc)}}:{mapValue:{fields:fields(v)}};
+  const obj=f=>{const o={};for(const k in f||{})o[k]=dec(f[k]);return o};
+  const dec=v=>'stringValue' in v?v.stringValue:'integerValue' in v?+v.integerValue:'doubleValue' in v?v.doubleValue
+    :'booleanValue' in v?v.booleanValue:'arrayValue' in v?(v.arrayValue.values||[]).map(dec):'mapValue' in v?obj(v.mapValue.fields):null;
+  const url=(p,qs)=>root+p+'?'+[cfg.k?'key='+encodeURIComponent(cfg.k):''].concat(qs||[]).filter(Boolean).join('&');
+  const call=async(m,u,body)=>{
+    const r=await fetch(u,{method:m,cache:'no-store',credentials:'omit',headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined});
+    if(r.status===404)return null;
+    if(!r.ok){const e=new Error('fs '+r.status);e.status=r.status;throw e}
+    return r.json()};
+  return{
+    /* the document as a plain object, or null when there is none */
+    get:async p=>{const d=await call('GET',url(p));return d?obj(d.fields):null},
+    /* writes only the fields named in mask (a named field that is missing from o is removed); makes the document if needed */
+    set:(p,o,mask)=>call('PATCH',url(p,(mask||Object.keys(o)).map(f=>'updateMask.fieldPaths='+f)),{fields:fields(o)}),
+    list:async p=>{const d=await call('GET',url(p,['pageSize=30']));return((d&&d.documents)||[]).map(x=>Object.assign(obj(x.fields),{id:x.name.split('/').pop()}))},
+    del:p=>call('DELETE',url(p))};
+};
+;return FSL})();
+
 (function(){
   'use strict';
   var KEY='epa-teacher-licence-v1', html=document.documentElement, $=function(id){return document.getElementById(id)};
@@ -6658,6 +6690,167 @@ const RL=(()=>{
   /* an activation made before the device limit keeps no seat: the code is asked for once more, and takes its seat then */
   var reseat=!!(SEAT&&st&&st.id&&st.m&&!/^[0-9a-f]{32}$/.test(st.s||'')),taken=false;
   try{if(sessionStorage.getItem(KEY+'-taken')){taken=true;sessionStorage.removeItem(KEY+'-taken')}}catch(e){}
+
+  /* ------------------------------------------------ the parent link (the parent's side is src/parent.html)
+     Nothing is sent until a parent has opened the parent page with this code: only then does epfam/<family id> exist.
+     What is sent is a summary the app already keeps on this device: the name the pupil typed, the grade, per grammar
+     topic the lessons done and the best quiz results, reading (how many texts, average, skills), the mistake notebook
+     (counts), study days and minutes, and where the pupil was last. Never the texts the pupil wrote, the school, the
+     teacher, the activation code or a place. What is read back is the goal the parent set, shown as «هدفي».
+     The original app is not changed: its own saved records (egm-*) are read from this device's storage. */
+  function famStart(L){
+    if(!SEAT||!V.fam||typeof EPFS!=='function'||!/^[0-9a-f]{32}$/.test(L.s||''))return;
+    var api=EPFS(SEAT),FK=KEY+'-fam',F={},busy=false,sid=L.s,b=new Uint8Array(16),i;
+    for(i=0;i<16;i++)b[i]=parseInt(sid.substr(i*2,2),16);
+    var fid=hex(EPRL.hmac(EPRL.hkey(b),EPRL.utf8('family')).subarray(0,16)),root='epfam/'+fid;
+    try{F=JSON.parse(localStorage.getItem(FK)||'{}')||{}}catch(e){F={}}
+    if(F.fid!==fid)F={fid:fid};
+    if(!/^[0-9a-f]{16}$/.test(F.cid||''))F.cid=hex(crypto.getRandomValues(new Uint8Array(8)));
+    if(!Array.isArray(F.log))F.log=[];
+    function keep(){try{localStorage.setItem(FK,JSON.stringify(F))}catch(e){}}
+    function J(k){try{return JSON.parse(localStorage.getItem(k)||'{}')||{}}catch(e){return {}}}
+    function today(){var d=new Date(),m=d.getMonth()+1,x=d.getDate();return d.getFullYear()+'-'+(m<10?'0':'')+m+'-'+(x<10?'0':'')+x}
+    function n(v,max){v=Math.round(+v||0);return v<0?0:max&&v>max?max:v}
+    /* the summary, from the app's own records */
+    function sum(){
+      var pr=J('egm-progress-v1'),stu=J('egm-student-v1'),rev=J('egm-review-v1'),rd=J('egm-read-v1'),ms=J('egm-missions-v1'),
+        wr=J('egm-writing-v1'),prod=J('egm-prod-v1'),qs=J('egm-qstats-v1'),last=J('egm-last-v1'),mods={},k,md=0;
+      try{if(typeof msStats==='function')md=msStats().done}catch(e){}
+      try{if(typeof SMODS!=='undefined'&&typeof MOD_STATE!=='undefined')SMODS.forEach(function(m){
+        var map=MOD_STATE[m.k];if(!map)return;
+        var t=(m.items()||[]).length,d=map.lessons?Object.keys(pr[map.lessons]||{}).length:0,q=0,a=0;
+        if(map.quiz){q=(pr[map.quiz]||{}).best||0;a=(pr[map.quiz]||{}).attempts||0}
+        else{var qz=pr.quizzes||{},ks=Object.keys(qz);ks.forEach(function(x){q+=qz[x].best||0;a+=qz[x].attempts||0});q=ks.length?q/ks.length:0}
+        mods[m.k]={d:n(Math.min(d,t),300),t:n(t,300),q:n(q,100),a:n(a,9999),b:n(map.big?(pr[map.big]||{}).best:0,100)}})}catch(e){}
+      var qn=0,qc=0;for(k in qs){qn+=qs[k].n||0;qc+=qs[k].c||0}
+      var done=rd.done||{},rk=Object.keys(done),avg=0;rk.forEach(function(x){avg+=done[x].best||0});
+      var rsk={},sk=rd.skill||{},c=0;for(k in sk){if(c++>=12)break;rsk[String(k).replace(/[^\w -]/g,'').slice(0,24)||'x']={c:n(sk[k].c,99999),t:n(sk[k].t,99999)}}
+      var label='';try{label=String(last.title||last.name||last.label||(typeof VIEW_LABEL!=='undefined'&&VIEW_LABEL[last.id])||'')}catch(e){}
+      var days=Array.isArray(stu.days)?stu.days:[];
+      return{name:String(stu.name||'').slice(0,30),grade:n(localStorage.getItem('egm-grade')||stu.grade,12),
+        days:days.slice(-60).map(function(x){return String(x).slice(0,10)}),dn:n(days.length,99999),streak:n(stu.streak,9999),best:n(stu.bestStreak,9999),
+        mods:mods,exam:n((stu.finalExam||{}).best,100),cert:String((stu.certificate||{}).level||'').slice(0,20),
+        nb:n(Object.keys(rev.items||{}).length,99999),nbm:n(rev.mastered,99999),qn:n(qn,9999999),qc:n(qc,9999999),
+        rd:{n:n(rk.length,9999),avg:n(rk.length?avg/rk.length:0,100),secs:n(rd.secs,99999999),words:n(rd.words,99999999)},rsk:rsk,
+        ms:n(Object.keys(ms.m||{}).length,9999),dc:n((stu.dict||{}).done,99999),md:n(md,9999),wr:n((wr.items||[]).length,9999),prod:n(Object.keys(prod.solved||{}).length,99999),
+        badges:n((pr.badges||[]).length,999),pos:{l:label.slice(0,40),at:Date.now()}}}
+    function lessons(s){var t=0,k;for(k in s.mods)t+=s.mods[k].d;return t}
+    function tries(s){var t=0,k;for(k in s.mods)t+=s.mods[k].a;return t}
+    /* today's row of the activity log: minutes, new lessons, quizzes taken */
+    function row(){var d=today(),r=F.log[F.log.length-1];if(!r||r.d!==d){r={d:d,t:0,l:0,q:0};F.log.push(r);if(F.log.length>30)F.log.splice(0,F.log.length-30)}return r}
+    function note(s){var l=lessons(s),q=tries(s),r=row();
+      if(typeof F.pl==='number'&&l>F.pl)r.l+=l-F.pl;if(typeof F.pq==='number'&&q>F.pq)r.q+=q-F.pq;F.pl=l;F.pq=q}
+    setInterval(function(){if(!document.hidden){row().t+=5;keep()}},5000);
+    /* ---- the goal ---- */
+    function value(s,g){var k,t=0;
+      if(g.kind==='quiz'){for(k in s.mods)if(s.mods[k].q>=80)t++;return t}
+      if(g.kind==='med')return typeof EPM==='object'?EPM.count(s):0;if(g.kind==='read')return s.rd.n;if(g.kind==='nb')return s.nbm;if(g.kind==='days')return s.dn;
+      if(g.kind==='mod')return(s.mods[g.k]||{}).d||0;return lessons(s)}
+    var AR=function(x){return String(x).replace(/\d/g,function(d){return '٠١٢٣٤٥٦٧٨٩'[d]})};
+    var UNIT={lessons:'درسًا',quiz:'اختبارًا بنسبة ٨٠٪ فأكثر',read:'نصّ قراءة',nb:'خطأً أتقنه من دفتر الأخطاء',days:'يوم مذاكرة',mod:'درسًا من الموضوع',med:'ميدالية'};
+    var chip=null,box=null;
+    function draw(s){var g=F.goal;
+      if(!g){if(chip){chip.remove();chip=null}return}
+      var got=Math.max(0,Math.min(g.need,value(s,g)-g.base)),rest=g.need-got;
+      if(!chip){chip=document.createElement('button');chip.type='button';chip.id='epaGoal';
+        chip.style.cssText='position:fixed;z-index:2147483000;inset-inline-start:10px;bottom:84px;border:3px solid #23314f;border-radius:99px;background:#ffc93c;color:#23314f;font:800 15px/1.6 system-ui,sans-serif;padding:4px 14px;box-shadow:0 4px 0 rgba(35,49,79,.25);direction:rtl;cursor:pointer';
+        chip.onclick=function(){open(sum())};document.body.appendChild(chip)}
+      chip.textContent=rest?'🎯 هدفي '+AR(got)+'/'+AR(g.need):'🎉 تحقّق الهدف';
+      if(!rest&&F.gseen!==g.set){F.gseen=g.set;keep();open(s)}}
+    function open(s){var g=F.goal;if(!g)return;if(box)box.remove();
+      var got=Math.max(0,Math.min(g.need,value(s,g)-g.base)),rest=g.need-got;
+      box=document.createElement('div');box.id='epaGoalBox';box.setAttribute('role','dialog');box.setAttribute('aria-label','هدفي');
+      box.style.cssText='position:fixed;z-index:2147483001;inset:0;background:rgba(20,28,48,.55);display:flex;align-items:center;justify-content:center;padding:18px;direction:rtl';
+      var c=document.createElement('div');c.style.cssText='background:#fffdf6;color:#23314f;border:4px solid #23314f;border-radius:22px;max-width:380px;width:100%;padding:18px;font:700 17px/1.8 system-ui,sans-serif;text-align:center';
+      var h=document.createElement('div');h.style.cssText='font-size:22px;font-weight:800';h.textContent=rest?'🎯 هدفي':'🎉 تحقّق الهدف!';
+      var p=document.createElement('div');p.style.cssText='font-size:24px;font-weight:800;overflow-wrap:anywhere';p.textContent=g.prize;
+      var bar=document.createElement('div');bar.style.cssText='height:18px;border:3px solid #23314f;border-radius:99px;background:#f1ebdd;overflow:hidden;margin:10px 0';
+      var fill=document.createElement('i');fill.style.cssText='display:block;height:100%;background:#ff7a3d;width:'+(100*got/g.need)+'%';bar.appendChild(fill);
+      var t=document.createElement('div');t.textContent=rest?'بقي '+AR(rest)+' '+UNIT[g.kind]:'أخبروا والديكم 😊';
+      var x=document.createElement('button');x.type='button';x.textContent='حسنًا';x.style.cssText='margin-top:12px;min-height:46px;border:3px solid #23314f;border-radius:14px;background:#ff7a3d;color:#fff;font:800 17px/1.6 system-ui,sans-serif;padding:4px 22px;cursor:pointer';
+      x.onclick=function(){box.remove();box=null};box.onclick=function(e){if(e.target===box){box.remove();box=null}};
+      c.appendChild(h);c.appendChild(p);c.appendChild(bar);c.appendChild(t);c.appendChild(x);box.appendChild(c);document.body.appendChild(box);x.focus()}
+    /* ---- the medals (EPM, src/medals.js): a button that floats above «هدفي» and a museum of them. The pictures are
+       files beside the page, so a copy opened as a single file shows none. A medal earned since the last look is
+       shown once; the first run only remembers what is already earned, so an update does not fire a row of them. ---- */
+    var mchip=null,mbox=null,mcss=false,MED=typeof EPM==='object'&&location.protocol!=='file:'?EPM.all():[];
+    function mstyle(){if(mcss)return;mcss=true;var e=document.createElement('style');e.textContent=
+      '#epaMedBox{position:fixed;z-index:2147483001;inset:0;background:linear-gradient(180deg,#0b3f9c,#071d49);color:#fff;direction:rtl;overflow:auto;-webkit-overflow-scrolling:touch;font:700 16px/1.7 system-ui,"Segoe UI",Tahoma,sans-serif}'
+      +'#epaMedBox *{box-sizing:border-box}#epaMedBox button{font:inherit;cursor:pointer;color:inherit}'
+      +'#epaMedBox .mh{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(7,29,73,.94)}'
+      +'#epaMedBox .mh b{flex:1;font-size:21px;font-weight:800;line-height:1.7}'
+      +'#epaMedBox .mh span{padding:2px 12px;border-radius:99px;background:#f6d98f;color:#071d49;font-weight:800;line-height:1.8}'
+      +'#epaMedBox .mx{min-width:46px;min-height:46px;border-radius:14px;border:2px solid rgba(255,255,255,.55);background:transparent;font-size:20px}'
+      +'#epaMedBox .mg{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:16px 10px;max-width:980px;margin:0 auto;padding:14px 14px 48px}'
+      +'#epaMedBox .mt{grid-column:1/-1;margin:8px 0 0;font-size:17px;font-weight:800;line-height:1.8;color:#f6d98f}'
+      +'#epaMedBox .mm{display:flex;flex-direction:column;align-items:center;gap:5px;padding:6px 2px 8px;border:0;border-radius:16px;background:transparent;text-align:center}'
+      +'#epaMedBox .mm:focus-visible{outline:3px solid #f6d98f}'
+      +'#epaMedBox .mm img{display:block;width:100%;max-width:150px;height:auto;aspect-ratio:1}'
+      +'#epaMedBox .mm.off img{filter:grayscale(1) brightness(.8);opacity:.42}'
+      +'#epaMedBox .mm i{display:block;width:76%;height:7px;border-radius:9px;background:rgba(255,255,255,.22);overflow:hidden}'
+      +'#epaMedBox .mm i u{display:block;height:100%;background:#f6d98f}'
+      +'#epaMedBox .mm small{font-size:13.5px;font-weight:700;line-height:1.7}'
+      +'#epaMedBox .md{position:fixed;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(4,14,44,.86)}'
+      +'#epaMedBox .mc{width:100%;max-width:380px;max-height:100%;overflow:auto;padding:16px 18px 18px;border-radius:24px;border:3px solid #f6d98f;background:#0b3f9c;text-align:center}'
+      +'#epaMedBox .mc img{display:block;width:min(260px,70%);height:auto;aspect-ratio:1;margin:0 auto 6px}'
+      +'#epaMedBox .mc.off img{filter:grayscale(1) brightness(.8);opacity:.5}'
+      +'#epaMedBox .mc h4{margin:0;font-size:23px;font-weight:800;line-height:1.7}'
+      +'#epaMedBox .mc h4 em{display:block;font-style:normal;font-size:15px;font-weight:600;direction:ltr;opacity:.85}'
+      +'#epaMedBox .mc .nw{color:#f6d98f;font-size:19px;font-weight:800;line-height:1.8}'
+      +'#epaMedBox .mc p{margin:8px 0 0;font-size:16px;font-weight:600;line-height:1.9}'
+      +'#epaMedBox .mc p b{display:block;color:#f6d98f;font-weight:800}'
+      +'#epaMedBox .mo{margin-top:14px;min-height:48px;padding:4px 26px;border-radius:14px;border:0;background:#f6d98f;color:#071d49!important;font-weight:800;font-size:17px;line-height:1.7}';
+      document.head.appendChild(e)}
+    function mel(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
+    function detail(m,x,fresh){if(!mbox)return;var old=mbox.querySelector('.md');if(old)old.remove();
+      var d=mel('div','md'),c=mel('div','mc'+(x.ok?'':' off')),im=mel('img'),h=mel('h4',''),em=mel('em','',m.en),o=mel('button','mo','حسنًا');
+      im.src='medals/'+m.id+'.webp';im.alt='';h.textContent=m.ar;h.appendChild(em);
+      if(fresh)c.appendChild(mel('div','nw','🎉 ميدالية جديدة!'));
+      c.appendChild(im);c.appendChild(h);
+      var p1=mel('p',''),b1=mel('b','',x.ok?'✅ نلتها':'كيف تنالها؟');p1.appendChild(b1);p1.appendChild(document.createTextNode(x.ok?x.now:x.how));c.appendChild(p1);
+      if(!x.ok){var p2=mel('p',''),b2=mel('b','','أين وصلت؟');p2.appendChild(b2);p2.appendChild(document.createTextNode(x.now));c.appendChild(p2)}
+      o.type='button';o.onclick=function(){d.remove()};d.onclick=function(e){if(e.target===d)d.remove()};
+      c.appendChild(o);d.appendChild(c);d.setAttribute('role','dialog');d.setAttribute('aria-label',m.ar);mbox.appendChild(d);o.focus()}
+    function museum(s){mstyle();if(mbox)mbox.remove();var st=EPM.state(s),got=0;MED.forEach(function(m){if(st[m.id].ok)got++});
+      mbox=mel('div');mbox.id='epaMedBox';mbox.setAttribute('role','dialog');mbox.setAttribute('aria-label','ميدالياتي');
+      var h=mel('div','mh'),x=mel('button','mx','✕'),g=mel('div','mg'),last='';
+      x.type='button';x.setAttribute('aria-label','إغلاق');x.onclick=function(){mbox.remove();mbox=null};
+      h.appendChild(mel('b','','🏅 ميدالياتي'));h.appendChild(mel('span','',AR(got)+' / '+AR(MED.length)));h.appendChild(x);mbox.appendChild(h);
+      MED.forEach(function(m){
+        if(m.kind!==last){last=m.kind;g.appendChild(mel('div','mt',m.kind==='g'?'📚 موضوعات القواعد':m.kind==='s'?'🎧 المهارات':'🏆 الميدالية الكبرى'))}
+        var y=st[m.id],b=mel('button','mm'+(y.ok?'':' off')),im=mel('img');b.type='button';
+        im.src='medals/'+m.id+'.webp';im.alt='';im.loading='lazy';im.width=512;im.height=512;b.appendChild(im);
+        if(!y.ok){var bar=mel('i'),f=mel('u');f.style.width=Math.round(y.p*100)+'%';bar.appendChild(f);b.appendChild(bar)}
+        b.appendChild(mel('small','',(y.ok?'✅ ':'')+m.ar));b.onclick=function(){detail(m,y,false)};g.appendChild(b)});
+      mbox.appendChild(g);document.body.appendChild(mbox);x.focus()}
+    function medals(s){if(!MED.length)return;var st=EPM.state(s),now=[];MED.forEach(function(m){if(st[m.id].ok)now.push(m.id)});
+      if(!mchip){mchip=document.createElement('button');mchip.type='button';mchip.id='epaMed';
+        mchip.style.cssText='position:fixed;z-index:2147483000;inset-inline-start:10px;bottom:128px;border:3px solid #071d49;border-radius:99px;background:#fff;color:#071d49;font:800 15px/1.6 system-ui,sans-serif;padding:4px 14px;box-shadow:0 4px 0 rgba(7,29,73,.25);direction:rtl;cursor:pointer';
+        mchip.onclick=function(){museum(sum())};document.body.appendChild(mchip)}
+      mchip.textContent='🏅 ميدالياتي '+AR(now.length)+'/'+AR(MED.length);
+      if(!Array.isArray(F.med)){F.med=now;keep();return}
+      var fresh=now.filter(function(id){return F.med.indexOf(id)<0});
+      if(fresh.length||now.length!==F.med.length){F.med=now;keep()}
+      if(fresh.length){var m=MED.filter(function(q){return q.id===fresh[0]})[0];museum(s);detail(m,st[m.id],true)}}
+    setInterval(function(){if(!document.hidden&&!mbox)medals(sum())},20000);
+    /* ---- send and read ---- */
+    function tick(){if(busy||navigator.onLine===false)return;busy=true;
+      var s=sum();note(s);keep();medals(s);
+      var sig=JSON.stringify([s.name,s.grade,s.mods,s.dn,s.exam,s.nb,s.nbm,s.rd.n,s.ms,s.dc,s.md,s.wr,s.prod,s.badges,Math.floor(row().t/60)]);
+      var p=root+'/kids/'+F.cid;
+      (F.on?Promise.resolve(true):api.get(root).then(function(d){if(d){F.on=1;keep()}return !!d}))
+      .then(function(on){if(!on)return null;
+        var send=sig!==F.sig?api.set(p,Object.assign(s,{updated:Date.now(),log:F.log.slice(-30)}),
+          ['name','grade','days','dn','streak','best','mods','exam','cert','nb','nbm','qn','qc','rd','rsk','ms','dc','md','wr','prod','badges','pos','updated','log']).then(function(){F.sig=sig;keep()}):Promise.resolve();
+        return send.then(function(){return api.get(p)})})
+      .then(function(d){if(d===null||d===undefined)return;var x=d.goal;
+        var g=x&&typeof x.prize==='string'&&x.need>0?{prize:x.prize.slice(0,60),kind:UNIT[x.kind]?x.kind:'lessons',need:x.need|0,base:x.base|0,k:String(x.k||'').slice(0,8),set:+x.set||0}:null;
+        if(JSON.stringify(g)!==JSON.stringify(F.goal||null)){if(g)F.goal=g;else delete F.goal;keep()}
+        draw(s)})
+      .catch(function(){}).then(function(){busy=false})}
+    draw(sum());medals(sum());
+    setTimeout(tick,4000);setInterval(tick,60000);
+    document.addEventListener('visibilitychange',function(){if(!document.hidden)tick()});addEventListener('online',tick)}
   var code=null;
   if(st&&st.id&&st.m&&!reseat){
     if(V.lic[st.id]){try{code=openApp(EPRL.unb64(st.m))}catch(e){code=null}}
@@ -6669,7 +6862,7 @@ const RL=(()=>{
     /* run it right here, while the page is still loading: an inline script added now runs at once, as a classic script,
        before DOMContentLoaded — the same moment the original single-file app ran it */
     $('epaData').textContent='';html.classList.remove('epa-boot');
-    var s=document.createElement('script');s.textContent=code;code=null;document.body.appendChild(s);report(st);return}
+    var s=document.createElement('script');s.textContent=code;code=null;document.body.appendChild(s);report(st);try{famStart(st)}catch(e){}return}
 
   /* ------------------------------------------------ locked: the activation screen */
   html.classList.remove('epa-boot');html.classList.add('epa-locked');
